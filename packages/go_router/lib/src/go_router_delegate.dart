@@ -99,6 +99,7 @@ class GoRouterDelegate extends RouterDelegate<Uri>
   final List<GoRouteMatch> _matches = <GoRouteMatch>[];
   final Map<String, GoRouteMatch> _namedMatches = <String, GoRouteMatch>{};
   final Map<String, int> _pushCounts = <String, int>{};
+  final Map<String, Completer<dynamic>> _completers = <String, Completer<dynamic>>{};
 
   void _cacheNamedRoutes(
     List<GoRoute> routes,
@@ -171,8 +172,26 @@ class GoRouterDelegate extends RouterDelegate<Uri>
     notifyListeners();
   }
 
+  /// Push the given location onto the page stack
+  Future<dynamic> pushAsync(String location, {Object? extra}) {
+    final Completer<dynamic> completer = Completer<dynamic>();
+    _completers[location] = completer;
+    log.info('pushing $location');
+    _push(location, extra: extra);
+    notifyListeners();
+    return completer.future;
+  }
+
   /// Pop the top page off the GoRouter's page stack.
-  void pop() {
+  void pop([dynamic value]) {
+    final GoRouteMatch last = _matches.last;
+    final Completer<dynamic>? completer = _completers[last.fullpath];
+
+    if (completer != null) {
+      completer.complete(value);
+    }
+
+    _completers.remove(last.fullpath);
     _matches.remove(_matches.last);
     assert(_matches.isNotEmpty,
         'have popped the last page off of the stack; there are no pages left to show');
@@ -692,7 +711,7 @@ class GoRouterDelegate extends RouterDelegate<Uri>
           if (!route.didPop(result)) {
             return false;
           }
-          pop();
+          pop(result);
           return true;
         },
       ),
